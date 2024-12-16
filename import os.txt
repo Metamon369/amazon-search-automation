@@ -1,0 +1,81 @@
+import os
+import requests
+import time
+import random
+import string
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+BRIGHTDATA_USER_BASE = os.getenv("BRIGHTDATA_USER_BASE")
+BRIGHTDATA_PASS = os.getenv("BRIGHTDATA_PASS")
+PROXY_HOST = "brd.superproxy.io"
+PROXY_PORT = 33335
+
+headers = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_4 like Mac OS X) "
+                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 "
+                  "Mobile/15E148 Safari/604.1"
+}
+
+keyword = "スケール Leaf Spade"
+base_url = "https://www.amazon.co.jp/s"
+num_iterations = 500
+
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+
+def create_session_and_proxies():
+    session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    brightdata_user = f"{BRIGHTDATA_USER_BASE}-session-{session_id}"
+
+    s = requests.Session()
+    s.verify = False
+    s.headers.update(headers)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
+
+    proxies = {
+        "http": f"http://{brightdata_user}:{BRIGHTDATA_PASS}@{PROXY_HOST}:{PROXY_PORT}",
+        "https": f"http://{brightdata_user}:{BRIGHTDATA_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+    }
+
+    return s, proxies
+
+for i in range(num_iterations):
+    # 検索
+    session, proxies = create_session_and_proxies()
+    try:
+        print(f"--- {i+1}回目: 検索開始 ---")
+        response = session.get(base_url, params={"k": keyword}, proxies=proxies, timeout=(10, 30))
+        if response.status_code == 200:
+            print(f"{i+1}回目: 検索成功")
+        else:
+            print(f"{i+1}回目: 検索失敗 (HTTP {response.status_code})")
+    except requests.exceptions.RequestException as e:
+        print(f"{i+1}回目: エラー発生, Error: {e}")
+
+    time.sleep(random.uniform(5, 15))
+
+    # リセット後にIPアドレスを変えて再検索
+    session, proxies = create_session_and_proxies()
+    try:
+        print(f"--- {i+1}回目: リセット後再検索開始 ---")
+        response = session.get(base_url, params={"k": keyword}, proxies=proxies, timeout=(10, 30))
+        if response.status_code == 200:
+            print(f"{i+1}回目: リセット後再検索成功")
+        else:
+            print(f"{i+1}回目: リセット後再検索失敗 (HTTP {response.status_code})")
+    except requests.exceptions.RequestException as e:
+        print(f"{i+1}回目: リセット後エラー発生, Error: {e}")
+
+    time.sleep(random.uniform(5, 15))
+
+print("全工程完了。")
